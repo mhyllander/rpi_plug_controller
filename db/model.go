@@ -1,0 +1,19 @@
+package db
+
+import (
+	"gorm.io/gorm"
+)
+
+type Sensor struct {
+	gorm.Model
+	SensorId  string
+	PlugId    string
+	State     string
+	IpAddress string
+}
+
+type Plug struct {
+	gorm.Model
+	PlugId    string
+	IpAddress string
+}

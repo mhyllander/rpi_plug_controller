@@ -1,0 +1,5 @@
+/arm64/**
+/bin/**
+/plugs.db
+/root.html
+!**/.keepdir

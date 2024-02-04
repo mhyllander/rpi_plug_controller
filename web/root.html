@@ -1,0 +1,50 @@
+<html>
+    <head>
+        <title>{{.PageTitle}}</title>
+        <script type='text/javascript'>
+            function getConfig() {
+                
+            }
+            function sendConfig() {
+
+            }
+        </script>
+    </head>
+    <body>
+        <style>
+            table, th, td {
+                border: 1px solid black;
+                border-collapse: collapse;
+            }
+            th, td {
+              padding: 10px;
+            }
+            thead {
+                color: green;
+            }
+        </style>
+        <h1>State</h1>
+        <h2>Sensors</h2>
+        <table>
+            <thead>
+                <tr><th>Sensor</th><th>Plug</th><th>State</th><th>IP</th><th>Updated</th></tr>
+            </thead>
+            <tbody>
+                {{ range .Sensors -}}
+                <tr><td>{{ .SensorId }}</td><td>{{ .PlugId }}</td><td>{{ .State }}</td><td>{{ .IpAddress }}</td><td>{{ .UpdatedAt }}</td></tr>
+                {{ end -}}
+            </tbody>
+        </table>
+        <h2>Plugs</h2>
+        <table>
+            <thead>
+                <tr><th>Plug</th><th>IP</th><th>Updated</th></tr>
+            </thead>
+            <tbody>
+                {{ range .Plugs -}}
+                <tr><td>{{ .PlugId }}</td><td>{{ .IpAddress }}</td><td>{{ .UpdatedAt }}</td></tr>
+                {{ end -}}
+            </tbody>
+        </table>
+   </body>
+</html>
