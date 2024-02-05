@@ -31,7 +31,7 @@
             </thead>
             <tbody>
                 {{ range .Sensors -}}
-                <tr><td>{{ .SensorId }}</td><td>{{ .PlugId }}</td><td>{{ .State }}</td><td>{{ .IpAddress }}</td><td>{{ .UpdatedAt }}</td></tr>
+                <tr><td>{{ .SensorId }}</td><td>{{ .PlugId }}</td><td>{{ .State }}</td><td><a href="http://{{ .IpAddress }}" target="_blank">{{ .IpAddress }}</a></td><td>{{ .UpdatedAt }}</td></tr>
                 {{ end -}}
             </tbody>
         </table>
@@ -42,7 +42,7 @@
             </thead>
             <tbody>
                 {{ range .Plugs -}}
-                <tr><td>{{ .PlugId }}</td><td>{{ .IpAddress }}</td><td>{{ .UpdatedAt }}</td></tr>
+                <tr><td>{{ .PlugId }}</td><td><a href="http://{{ .IpAddress }}" target="_blank">{{ .IpAddress }}</a></td><td>{{ .UpdatedAt }}</td></tr>
                 {{ end -}}
             </tbody>
         </table>
