@@ -12,7 +12,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/httplog/v2"
 	"github.com/mhyllander/rpi_plug_controller/db"
+	"github.com/mhyllander/rpi_plug_controller/utils"
 )
 
 var rootTemplate *template.Template
@@ -117,15 +119,24 @@ func handleDeletePlug(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func StartServer(plugUpdates chan<- string) {
+func StartServer(plugUpdates chan<- string, logLevel string) {
 	var err error
 
 	r := chi.NewRouter()
 
+	// Logger
+	logger := httplog.NewLogger("plugs-controller", httplog.Options{
+		JSON:            true,
+		LogLevel:        utils.SetLoggerOpts(logLevel).Level.Level(),
+		Concise:         true,
+		RequestHeaders:  false,
+		SourceFieldName: "",
+	})
+
 	// A good base middleware stack
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
+	r.Use(httplog.RequestLogger(logger))
 	r.Use(middleware.Recoverer)
 
 	// Set a timeout value on the request context (ctx), that will signal

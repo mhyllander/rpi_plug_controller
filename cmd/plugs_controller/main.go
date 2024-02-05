@@ -84,5 +84,5 @@ func main() {
 
 	go processPlugUpdates(plugUpdates, done)
 
-	server.StartServer(plugUpdates)
+	server.StartServer(plugUpdates, *vLogLevel)
 }

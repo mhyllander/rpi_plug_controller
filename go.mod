@@ -4,6 +4,7 @@ go 1.21.6
 
 require (
 	github.com/go-chi/chi/v5 v5.0.11
+	github.com/go-chi/httplog/v2 v2.0.9
 	gorm.io/driver/sqlite v1.5.4
 	gorm.io/gorm v1.25.6
 )
