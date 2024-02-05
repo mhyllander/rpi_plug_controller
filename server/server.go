@@ -23,10 +23,24 @@ type contextKey string
 
 const plugUpdatesKey contextKey = "plugUpdates"
 
+type WebSensor struct {
+	SensorId  string
+	PlugId    string
+	State     string
+	IpAddress string
+	UpdatedAt string
+}
+
+type WebPlug struct {
+	PlugId    string
+	IpAddress string
+	UpdatedAt string
+}
+
 type RootData struct {
 	PageTitle string
-	Sensors   []db.Sensor
-	Plugs     []db.Plug
+	Sensors   []WebSensor
+	Plugs     []WebPlug
 }
 
 func getRoot(w http.ResponseWriter, r *http.Request) {
@@ -37,14 +51,24 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Error("failed to get all sensors", "err", err)
 	}
+	webSensors := make([]WebSensor, 0, 10)
+	for _, s := range sensors {
+		webSensors = append(webSensors, WebSensor{s.SensorId, s.PlugId, s.State, s.IpAddress, s.UpdatedAt.Format(time.DateTime)})
+	}
+
 	plugs, err := db.GetAllPlugs()
 	if err != nil {
 		slog.Error("failed to get all plugs", "err", err)
 	}
+	webPlugs := make([]WebPlug, 0, 10)
+	for _, p := range plugs {
+		webPlugs = append(webPlugs, WebPlug{p.PlugId, p.IpAddress, p.UpdatedAt.Format(time.DateTime)})
+	}
+
 	data := RootData{
 		PageTitle: "Plugs Controller",
-		Sensors:   sensors,
-		Plugs:     plugs,
+		Sensors:   webSensors,
+		Plugs:     webPlugs,
 	}
 	rootTemplate.Execute(w, data)
 }
