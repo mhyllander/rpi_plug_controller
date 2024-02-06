@@ -46,8 +46,6 @@ type RootData struct {
 }
 
 func getRoot(w http.ResponseWriter, r *http.Request) {
-	// ctx := r.Context()
-
 	slog.Debug("GET /")
 	sensors, err := db.GetAllSensors()
 	if err != nil {
@@ -68,7 +66,7 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := RootData{
-		PageTitle: "Plugs Controller",
+		PageTitle: "Plugs Controller Status",
 		Sensors:   webSensors,
 		Plugs:     webPlugs,
 	}
