@@ -38,11 +38,11 @@
         <h2>Plugs</h2>
         <table>
             <thead>
-                <tr><th>Plug</th><th>IP</th><th>State</th><th>Updated</th></tr>
+                <tr><th>Plug</th><th>IP</th><th>State</th><th>Updated</th><th>Response</th></tr>
             </thead>
             <tbody>
                 {{ range .Plugs -}}
-                <tr><td>{{ .PlugId }}</td><td><a href="http://{{ .IpAddress }}" target="_blank">{{ .IpAddress }}</a></td><td>{{ .State }}</td><td>{{ .UpdatedAt }}</td></tr>
+                <tr><td>{{ .PlugId }}</td><td><a href="http://{{ .IpAddress }}" target="_blank">{{ .IpAddress }}</a></td><td>{{ .State }}</td><td>{{ .UpdatedAt }}</td><td>{{ .Response }}</td></tr>
                 {{ end -}}
             </tbody>
         </table>

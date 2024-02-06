@@ -35,6 +35,7 @@ type WebPlug struct {
 	PlugId    string
 	IpAddress string
 	State     string
+	Response  string
 	UpdatedAt string
 }
 
@@ -63,7 +64,7 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 	}
 	webPlugs := make([]WebPlug, 0, 10)
 	for _, p := range plugs {
-		webPlugs = append(webPlugs, WebPlug{PlugId: p.PlugId, IpAddress: p.IpAddress, State: p.State, UpdatedAt: p.UpdatedAt.Format(time.DateTime)})
+		webPlugs = append(webPlugs, WebPlug{PlugId: p.PlugId, IpAddress: p.IpAddress, State: p.State, Response: p.Response, UpdatedAt: p.UpdatedAt.Format(time.DateTime)})
 	}
 
 	data := RootData{
@@ -107,19 +108,32 @@ func handleDeleteSensor(w http.ResponseWriter, r *http.Request) {
 	var plugUpdates chan<- string = ctx.Value(plugUpdatesKey).(chan<- string)
 
 	sensorId := chi.URLParam(r, "sensorId")
-	slog.Debug("DELETE /sensor", "sensorId", sensorId)
+	plugId := chi.URLParam(r, "plugId") // optional, "" if not provided
+	slog.Debug("DELETE /sensor", "sensorId", sensorId, "plugId", plugId)
 
-	plugs, err := db.GetPlugsRelatedToSensor(sensorId)
-	if err != nil {
-		slog.Error("failed to get plugs for sensor", "sensorId", sensorId)
+	// Collect the plugIds that are affected by deleting the sensor.
+	// If no specifc plugId has been provided, we will be updating all
+	// related plugs, and must get them before deleting the sensor.
+	plugIds := make([]string, 0, 10)
+	if plugId != "" {
+		plugIds = append(plugIds, plugId)
+	} else {
+		if plugs, err := db.GetPlugsRelatedToSensor(sensorId); err == nil {
+			for _, plug := range plugs {
+				plugIds = append(plugIds, plug.PlugId)
+			}
+		} else {
+			slog.Error("failed to get plugs for sensor", "sensorId", sensorId)
+		}
 	}
-	if err := db.DeleteSensor(sensorId); err != nil {
+
+	if err := db.DeleteSensor(sensorId, plugId); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
 
 	// send the plugIds for further processing
-	for _, plug := range plugs {
-		plugUpdates <- plug.PlugId
+	for _, pid := range plugIds {
+		plugUpdates <- pid
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -185,6 +199,7 @@ func StartServer(plugUpdates chan<- string, logLevel string) {
 		r.Use(plugUpdatesMiddleware)
 		r.Get("/{plugId}/{state}", handleUpdateSensor)
 		r.Post("/{plugId}/{state}", handleUpdateSensor)
+		r.Delete("/{plugId}", handleDeleteSensor)
 		r.Delete("/", handleDeleteSensor)
 	})
 

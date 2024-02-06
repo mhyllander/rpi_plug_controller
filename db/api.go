@@ -60,8 +60,8 @@ func GetAllSensors() ([]Sensor, error) {
 	return sensors, nil
 }
 
-func DeleteSensor(sensorId string) error {
-	if result := myDb.Where(&Sensor{SensorId: sensorId}).Delete(&Sensor{}); result.Error != nil {
+func DeleteSensor(sensorId, plugId string) error {
+	if result := myDb.Where(&Sensor{SensorId: sensorId, PlugId: plugId}).Delete(&Sensor{}); result.Error != nil {
 		return result.Error
 	}
 	return nil
@@ -77,9 +77,9 @@ func CreatePlug(plugId, ipAddress string) (*Plug, error) {
 	return &plug, nil
 }
 
-func UpdatePlug(plugId, state string) (*Plug, error) {
+func UpdatePlug(plugId, state, response string) (*Plug, error) {
 	var plug Plug
-	if result := myDb.Model(&plug).Where(&Plug{PlugId: plugId}).Update("State", state); result.Error != nil {
+	if result := myDb.Model(&plug).Where(&Plug{PlugId: plugId}).Updates(&Plug{State: state, Response: response}); result.Error != nil {
 		return nil, result.Error
 	}
 	return &plug, nil

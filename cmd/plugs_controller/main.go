@@ -47,11 +47,15 @@ func processPlugUpdates(plugUpdates <-chan string, done <-chan struct{}) {
 			if plug.State != state || time.Since(plug.UpdatedAt) > updateInterval {
 				slog.Info("notify plug", "plugId", plug.PlugId, "state", state, "ipAddress", plug.IpAddress)
 				resp, err := http.Get(fmt.Sprintf("http://%s/relay/0?turn=%s", plug.IpAddress, state))
+				var respMsg string
 				if err != nil {
 					slog.Warn("failed to notify plug", "plugId", plug.PlugId, "err", err)
+					respMsg = err.Error()
+				} else {
+					slog.Debug("notify plug response", "resp", resp)
+					respMsg = resp.Status
 				}
-				slog.Debug("notify plug response", "resp", resp)
-				if _, err := db.UpdatePlug(plugId, state); err != nil {
+				if _, err := db.UpdatePlug(plugId, state, respMsg); err != nil {
 					slog.Warn("failed to update plug", "plugId", plug.PlugId, "err", err)
 				}
 			}

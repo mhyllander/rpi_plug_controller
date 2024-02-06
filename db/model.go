@@ -17,4 +17,5 @@ type Plug struct {
 	PlugId    string
 	IpAddress string
 	State     string
+	Response  string
 }
