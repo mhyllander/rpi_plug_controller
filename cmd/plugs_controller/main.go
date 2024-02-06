@@ -6,11 +6,15 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/mhyllander/rpi_plug_controller/db"
 	"github.com/mhyllander/rpi_plug_controller/server"
 	"github.com/mhyllander/rpi_plug_controller/utils"
 )
+
+// the interval between updates if the state doesn't change
+const updateInterval = time.Minute * 15
 
 func processPlugUpdates(plugUpdates <-chan string, done <-chan struct{}) {
 	for {
@@ -40,12 +44,17 @@ func processPlugUpdates(plugUpdates <-chan string, done <-chan struct{}) {
 				slog.Error("failed to get plug", "plugId", plugId, "err", err)
 				break
 			}
-			slog.Info("notify plug", "plugId", plug.PlugId, "state", state, "ipAddress", plug.IpAddress)
-			resp, err := http.Get(fmt.Sprintf("http://%s/relay/0?turn=%s", plug.IpAddress, state))
-			if err != nil {
-				slog.Warn("failed to notify plug", "plugId", plug.PlugId, "err", err)
+			if plug.State != state || time.Since(plug.UpdatedAt) > updateInterval {
+				slog.Info("notify plug", "plugId", plug.PlugId, "state", state, "ipAddress", plug.IpAddress)
+				resp, err := http.Get(fmt.Sprintf("http://%s/relay/0?turn=%s", plug.IpAddress, state))
+				if err != nil {
+					slog.Warn("failed to notify plug", "plugId", plug.PlugId, "err", err)
+				}
+				slog.Debug("notify plug response", "resp", resp)
+				if _, err := db.UpdatePlug(plugId, state); err != nil {
+					slog.Warn("failed to update plug", "plugId", plug.PlugId, "err", err)
+				}
 			}
-			slog.Debug("notify plug response", "resp", resp)
 
 		case <-done:
 			return

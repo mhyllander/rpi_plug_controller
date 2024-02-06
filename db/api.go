@@ -69,9 +69,17 @@ func DeleteSensor(sensorId string) error {
 
 // -----------------------------------------------------------------------------
 // Plug CRUD
-func UpdatePlug(plugId, ipAddress string) (*Plug, error) {
+func CreatePlug(plugId, ipAddress string) (*Plug, error) {
 	var plug Plug
 	if result := myDb.Where(&Plug{PlugId: plugId}).Assign(&Plug{IpAddress: ipAddress}).FirstOrCreate(&plug); result.Error != nil {
+		return nil, result.Error
+	}
+	return &plug, nil
+}
+
+func UpdatePlug(plugId, state string) (*Plug, error) {
+	var plug Plug
+	if result := myDb.Model(&plug).Where(&Plug{PlugId: plugId}).Update("State", state); result.Error != nil {
 		return nil, result.Error
 	}
 	return &plug, nil

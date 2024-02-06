@@ -7,13 +7,14 @@ import (
 type Sensor struct {
 	gorm.Model
 	SensorId  string
+	IpAddress string
 	PlugId    string
 	State     string
-	IpAddress string
 }
 
 type Plug struct {
 	gorm.Model
 	PlugId    string
 	IpAddress string
+	State     string
 }

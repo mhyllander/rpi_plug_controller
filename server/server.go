@@ -25,15 +25,16 @@ const plugUpdatesKey contextKey = "plugUpdates"
 
 type WebSensor struct {
 	SensorId  string
+	IpAddress string
 	PlugId    string
 	State     string
-	IpAddress string
 	UpdatedAt string
 }
 
 type WebPlug struct {
 	PlugId    string
 	IpAddress string
+	State     string
 	UpdatedAt string
 }
 
@@ -53,7 +54,7 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 	}
 	webSensors := make([]WebSensor, 0, 10)
 	for _, s := range sensors {
-		webSensors = append(webSensors, WebSensor{s.SensorId, s.PlugId, s.State, s.IpAddress, s.UpdatedAt.Format(time.DateTime)})
+		webSensors = append(webSensors, WebSensor{SensorId: s.SensorId, IpAddress: s.IpAddress, PlugId: s.PlugId, State: s.State, UpdatedAt: s.UpdatedAt.Format(time.DateTime)})
 	}
 
 	plugs, err := db.GetAllPlugs()
@@ -62,7 +63,7 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 	}
 	webPlugs := make([]WebPlug, 0, 10)
 	for _, p := range plugs {
-		webPlugs = append(webPlugs, WebPlug{p.PlugId, p.IpAddress, p.UpdatedAt.Format(time.DateTime)})
+		webPlugs = append(webPlugs, WebPlug{PlugId: p.PlugId, IpAddress: p.IpAddress, State: p.State, UpdatedAt: p.UpdatedAt.Format(time.DateTime)})
 	}
 
 	data := RootData{
@@ -128,7 +129,7 @@ func handleUpdatePlug(w http.ResponseWriter, r *http.Request) {
 	plugId := chi.URLParam(r, "plugId")
 	ipAddress := chi.URLParam(r, "ipAddress")
 	slog.Debug("POST /plug", "plugId", plugId, "ipAddress", ipAddress)
-	if _, err := db.UpdatePlug(plugId, ipAddress); err != nil {
+	if _, err := db.CreatePlug(plugId, ipAddress); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
 	w.WriteHeader(http.StatusNoContent)
