@@ -183,7 +183,7 @@ func StartServer(plugUpdates chan<- string, logLevel string) {
 
 	// status page
 	r.Get("/", getRoot)
-	rootTemplate = template.Must(template.ParseFiles("root.html"))
+	rootTemplate = template.Must(template.ParseFiles("web/root.html"))
 
 	// Sensor API
 	// Custom middleware to add plugUpdatesKey
