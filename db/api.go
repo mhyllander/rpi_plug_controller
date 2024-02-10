@@ -36,9 +36,9 @@ func Close() {
 
 // -----------------------------------------------------------------------------
 // Sensor CRUD
-func UpdateSensor(sensorId, plugId, state, ipAddress string) (*Sensor, error) {
+func UpdateSensor(sensorId, ipAddress, plugId, state, value string) (*Sensor, error) {
 	var sensor Sensor
-	if result := myDb.Where(&Sensor{SensorId: sensorId, PlugId: plugId}).Assign(&Sensor{State: state, IpAddress: ipAddress}).FirstOrCreate(&sensor); result.Error != nil {
+	if result := myDb.Where(&Sensor{SensorId: sensorId, PlugId: plugId}).Assign(&Sensor{IpAddress: ipAddress, State: state, Value: value}).FirstOrCreate(&sensor); result.Error != nil {
 		return nil, result.Error
 	}
 	return &sensor, nil

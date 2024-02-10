@@ -28,6 +28,7 @@ type WebSensor struct {
 	IpAddress string
 	PlugId    string
 	State     string
+	Value     string
 	UpdatedAt string
 }
 
@@ -53,7 +54,7 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 	}
 	webSensors := make([]WebSensor, 0, 10)
 	for _, s := range sensors {
-		webSensors = append(webSensors, WebSensor{SensorId: s.SensorId, IpAddress: s.IpAddress, PlugId: s.PlugId, State: s.State, UpdatedAt: s.UpdatedAt.Format(time.DateTime)})
+		webSensors = append(webSensors, WebSensor{SensorId: s.SensorId, IpAddress: s.IpAddress, PlugId: s.PlugId, State: s.State, Value: s.Value, UpdatedAt: s.UpdatedAt.Format(time.DateTime)})
 	}
 
 	plugs, err := db.GetAllPlugs()
@@ -81,7 +82,8 @@ func handleUpdateSensor(w http.ResponseWriter, r *http.Request) {
 	sensorId := chi.URLParam(r, "sensorId")
 	plugId := chi.URLParam(r, "plugId")
 	state := chi.URLParam(r, "state")
-	slog.Debug("POST /sensor", "ipAddress", ipAddress, "sensorId", sensorId, "plugId", plugId, "state", state)
+	value := chi.URLParam(r, "value")
+	slog.Debug("POST /sensor", "sensorId", sensorId, "ipAddress", ipAddress, "plugId", plugId, "state", state, "value", value)
 
 	switch state {
 	case "on", "off":
@@ -91,7 +93,7 @@ func handleUpdateSensor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := db.UpdateSensor(sensorId, plugId, state, ipAddress); err != nil {
+	if _, err := db.UpdateSensor(sensorId, ipAddress, plugId, state, value); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
 
@@ -196,7 +198,7 @@ func StartServer(plugUpdates chan<- string, logLevel string) {
 	r.Route("/sensor/{sensorId}", func(r chi.Router) {
 		r.Use(plugUpdatesMiddleware)
 		r.Get("/{plugId}/{state}", handleUpdateSensor)
-		r.Post("/{plugId}/{state}", handleUpdateSensor)
+		r.Get("/{plugId}/{state}/{value}", handleUpdateSensor)
 		r.Delete("/{plugId}", handleDeleteSensor)
 		r.Delete("/", handleDeleteSensor)
 	})
@@ -204,7 +206,6 @@ func StartServer(plugUpdates chan<- string, logLevel string) {
 	// Plug API
 	r.Route("/plug/{plugId}", func(r chi.Router) {
 		r.Get("/{ipAddress}", handleUpdatePlug)
-		r.Post("/{ipAddress}", handleUpdatePlug)
 		r.Delete("/", handleDeletePlug)
 	})
 

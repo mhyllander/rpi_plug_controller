@@ -10,6 +10,7 @@ type Sensor struct {
 	IpAddress string
 	PlugId    string
 	State     string
+	Value     string
 }
 
 type Plug struct {
