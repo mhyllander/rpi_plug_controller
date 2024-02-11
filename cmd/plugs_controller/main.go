@@ -55,7 +55,7 @@ func processPlugUpdates(plugUpdates <-chan string, done <-chan struct{}) {
 					slog.Debug("notify plug response", "resp", resp)
 					respMsg = resp.Status
 				}
-				if _, err := db.UpdatePlug(plugId, state, respMsg); err != nil {
+				if _, err := db.UpdatePlugState(plugId, state, respMsg); err != nil {
 					slog.Warn("failed to update plug", "plugId", plug.PlugId, "err", err)
 				}
 			}

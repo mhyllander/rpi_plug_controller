@@ -38,7 +38,13 @@ func Close() {
 // Sensor CRUD
 func UpdateSensor(sensorId, ipAddress, plugId, state, value string) (*Sensor, error) {
 	var sensor Sensor
-	if result := myDb.Where(&Sensor{SensorId: sensorId, PlugId: plugId}).Assign(&Sensor{IpAddress: ipAddress, State: state, Value: value}).FirstOrCreate(&sensor); result.Error != nil {
+	if result := myDb.Where(&Sensor{SensorId: sensorId, PlugId: plugId}).FirstOrInit(&sensor); result.Error != nil {
+		return nil, result.Error
+	}
+	sensor.IpAddress = ipAddress
+	sensor.State = state
+	sensor.Value = value
+	if result := myDb.Save(&sensor); result.Error != nil {
 		return nil, result.Error
 	}
 	return &sensor, nil
@@ -71,13 +77,17 @@ func DeleteSensor(sensorId, plugId string) error {
 // Plug CRUD
 func CreatePlug(plugId, ipAddress string) (*Plug, error) {
 	var plug Plug
-	if result := myDb.Where(&Plug{PlugId: plugId}).Assign(&Plug{IpAddress: ipAddress}).FirstOrCreate(&plug); result.Error != nil {
+	if result := myDb.Where(&Plug{PlugId: plugId}).FirstOrInit(&plug); result.Error != nil {
+		return nil, result.Error
+	}
+	plug.IpAddress = ipAddress
+	if result := myDb.Save(&plug); result.Error != nil {
 		return nil, result.Error
 	}
 	return &plug, nil
 }
 
-func UpdatePlug(plugId, state, response string) (*Plug, error) {
+func UpdatePlugState(plugId, state, response string) (*Plug, error) {
 	var plug Plug
 	if result := myDb.Model(&plug).Where(&Plug{PlugId: plugId}).Updates(&Plug{State: state, Response: response}); result.Error != nil {
 		return nil, result.Error
