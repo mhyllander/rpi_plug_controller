@@ -46,6 +46,12 @@ type RootData struct {
 	Plugs     []WebPlug
 }
 
+func NoBreak(d string) template.HTML {
+	s := strings.ReplaceAll(d, ":", ":&NoBreak;")
+	s = strings.ReplaceAll(s, "-", "-&NoBreak;")
+	return template.HTML(s)
+}
+
 func getRoot(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("GET /")
 	sensors, err := db.GetAllSensors()
@@ -67,11 +73,14 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := RootData{
-		PageTitle: "Plugs Controller Status",
+		PageTitle: "Plugs Controller",
 		Sensors:   webSensors,
 		Plugs:     webPlugs,
 	}
-	rootTemplate.Execute(w, data)
+	err = rootTemplate.Execute(w, data)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func handleUpdateSensor(w http.ResponseWriter, r *http.Request) {
@@ -185,7 +194,10 @@ func StartServer(plugUpdates chan<- string, logLevel string) {
 
 	// status page
 	r.Get("/", getRoot)
-	rootTemplate = template.Must(template.ParseFiles("web/root.html"))
+	webFunctions := template.FuncMap{
+		"NoBreak": NoBreak,
+	}
+	rootTemplate = template.Must(template.New("root.gohtml").Funcs(webFunctions).ParseFiles("web/root.gohtml"))
 
 	// Sensor API
 	// Custom middleware to add plugUpdatesKey

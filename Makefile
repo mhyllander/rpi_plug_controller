@@ -17,7 +17,7 @@ test:
 	# go test
 
 deploy: test build-rpi
-	ssh pi3 'sudo systemctl stop plugs_controller.service; [ -d bin ] || mkdir bin; [ -d plugs ] || mkdir plugs'
+	ssh pi3 'sudo systemctl stop plugs_controller.service; [ -d bin ] || mkdir bin; [ -d plugs ] && rm -rf plugs/web || mkdir plugs'
 	scp $(BINARIES_RPI) pi3:bin/
 	scp -r web pi3:plugs/
 	ssh pi3 sudo systemctl start plugs_controller.service
