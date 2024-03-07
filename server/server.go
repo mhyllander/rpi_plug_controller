@@ -174,11 +174,13 @@ func StartServer(plugUpdates chan<- string, logLevel string) {
 
 	// Logger
 	logger := httplog.NewLogger("plugs-controller", httplog.Options{
-		JSON:            true,
-		LogLevel:        utils.SetLoggerOpts(logLevel).Level.Level(),
-		Concise:         true,
-		RequestHeaders:  false,
-		SourceFieldName: "",
+		JSON:             true,
+		LogLevel:         utils.SetLoggerOpts(logLevel).Level.Level(),
+		Concise:          true,
+		RequestHeaders:   false,
+		SourceFieldName:  "",
+		TimeFieldName:    "time",
+		MessageFieldName: "msg",
 	})
 
 	// A good base middleware stack
