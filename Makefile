@@ -1,5 +1,6 @@
 BINARIES := bin/plugs_controller
 BINARIES_RPI := arm64/plugs_controller
+DEPLOY_HOST := 10.56.31.3
 
 all: build build-rpi
 
@@ -17,10 +18,10 @@ test:
 	# go test
 
 deploy: test build-rpi
-	ssh pi3 'sudo systemctl stop plugs_controller.service; [ -d bin ] || mkdir bin; [ -d plugs ] && rm -rf plugs/web || mkdir plugs'
-	scp $(BINARIES_RPI) pi3:bin/
-	scp -r web pi3:plugs/
-	ssh pi3 sudo systemctl start plugs_controller.service
+	ssh $(DEPLOY_HOST) 'sudo systemctl stop plugs_controller.service; [ -d bin ] || mkdir bin; [ -d plugs ] && rm -rf plugs/web || mkdir plugs'
+	scp $(BINARIES_RPI) $(DEPLOY_HOST):bin/
+	scp -r web $(DEPLOY_HOST):plugs/
+	ssh $(DEPLOY_HOST) sudo systemctl start plugs_controller.service
 
 clean:
 	rm -f bin/* arm64/*
