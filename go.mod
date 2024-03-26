@@ -4,7 +4,7 @@ go 1.22.1
 
 require (
 	github.com/go-chi/chi/v5 v5.0.12
-	github.com/mhyllander/go-chi-httplog/v2 v2.0.0-20240307083016-6cc81b613b09
+	github.com/mhyllander/go-chi-httplog/v2 v2.0.0-20240325164600-4aaa95efdec4
 	gorm.io/driver/sqlite v1.5.5
 	gorm.io/gorm v1.25.8
 )
