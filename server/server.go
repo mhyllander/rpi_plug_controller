@@ -14,7 +14,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	httplog "github.com/mhyllander/go-chi-httplog/v2"
 	"github.com/mhyllander/rpi_plug_controller/db"
-	"github.com/mhyllander/rpi_plug_controller/utils"
+	"github.com/mhyllander/rpi_plug_controller/logs"
 )
 
 var rootTemplate *template.Template
@@ -175,7 +175,7 @@ func StartServer(plugUpdates chan<- string, logLevel string) {
 	// Logger
 	logger := httplog.NewLogger("plugs-controller", httplog.Options{
 		JSON:             true,
-		LogLevel:         utils.SetLoggerOpts(logLevel).Level.Level(),
+		LogLevel:         logs.SetLoggerOpts(logLevel).Level.Level(),
 		Concise:          true,
 		RequestHeaders:   false,
 		SourceFieldName:  "",

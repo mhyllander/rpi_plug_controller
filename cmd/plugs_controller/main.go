@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/mhyllander/rpi_plug_controller/db"
+	"github.com/mhyllander/rpi_plug_controller/logs"
 	"github.com/mhyllander/rpi_plug_controller/server"
-	"github.com/mhyllander/rpi_plug_controller/utils"
 )
 
 // the interval between updates if the state doesn't change
@@ -83,7 +83,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	utils.InitLogger(*vLogLevel)
+	logs.InitLogger(*vLogLevel)
 
 	// open and initialize database
 	db.Initialize(*vDb)
