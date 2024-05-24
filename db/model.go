@@ -11,6 +11,8 @@ type Sensor struct {
 	PlugId    string
 	State     string
 	Value     string
+	Min       string
+	Max       string
 }
 
 type Plug struct {

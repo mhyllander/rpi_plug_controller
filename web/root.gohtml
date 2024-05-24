@@ -54,7 +54,7 @@
                         </a>
                     </td>
                     <td>{{ .Value }}</td>
-                    <td>{{ .PlugId }}</td>
+                    <td>{{ .PlugId }}<br><div class=info>{{ .Min | NoBreak }}&lt;{{ .Max | NoBreak }}</div></td>
                     <td>{{ .State }}</td>
                     <td><span>{{ .UpdatedAt | NoBreak }}</span></td>
                 </tr>

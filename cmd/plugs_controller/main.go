@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/mhyllander/rpi_plug_controller/db"
@@ -16,47 +17,89 @@ import (
 // the interval between updates if the state doesn't change
 const updateInterval = time.Minute * 15
 
-func processPlugUpdates(plugUpdates <-chan string, done <-chan struct{}) {
+func processSensorUpdates(sensorUpdates <-chan string, done <-chan struct{}) {
 	for {
 		select {
-		case plugId := <-plugUpdates:
-			slog.Debug("processing state update for plug", "plugId", plugId)
-			sensors, err := db.GetStatesForPlug(plugId)
+		case sensorId := <-sensorUpdates:
+			slog.Debug("processing state updates for sensor", "sensorId", sensorId)
+			sensors, err := db.GetPlugsRelatedToSensor(sensorId)
 			if err != nil {
-				slog.Error("failed ot get states for plug", "plugId", plugId, "err", err)
+				slog.Error("failed ot get states for plug", "plugId", sensorId, "err", err)
 				break
 			}
 			if len(sensors) == 0 {
-				slog.Info("no sensors for plug", "plugId", plugId)
+				slog.Info("no plugs for sensor", "sensorId", sensorId)
 				break
 			}
-			// Check if any sensor wants the plug to be on
-			state := "off"
+			// check each plug related to the sensor
 			for _, s := range sensors {
-				if s.State == "on" {
-					state = "on"
+				// update the desired plug state
+				cur, err := strconv.ParseFloat(s.Value, 32)
+				if err != nil {
+					slog.Error("failed to convert to float", "value", s.Value, "err", err, "sensorId", s.SensorId, "plugId", s.PlugId)
+					continue
+				}
+				min, err := strconv.ParseFloat(s.Min, 32)
+				if err != nil {
+					slog.Error("failed to convert to float", "min", s.Min, "err", err, "sensorId", s.SensorId, "plugId", s.PlugId)
+					continue
+				}
+				max, err := strconv.ParseFloat(s.Max, 32)
+				if err != nil {
+					slog.Error("failed to convert to float", "max", s.Max, "err", err, "sensorId", s.SensorId, "plugId", s.PlugId)
+					continue
+				}
+				newState := s.State
+				switch {
+				case cur > max:
+					newState = "on"
+				case cur < min:
+					newState = "off"
+				case newState == "":
+					newState = "off"
+				}
+				if s.State != newState {
+					s.State = newState
+					if _, err := db.UpdateSensorPlugState(s.SensorId, s.PlugId, newState); err != nil {
+						slog.Error("failed to update sensor plug state", "sensorId", s.SensorId, "plugId", s.PlugId, "err", err)
+						continue
+					}
+				}
+
+				// Check if any sensor wants the plug to be on
+				sensorStates, err := db.GetSensorStatesForPlug(s.PlugId)
+				if err != nil {
+					slog.Error("failed to get desired states for plug", "plugId", s.PlugId, "err", err)
+					continue
+				}
+				desiredState := "off"
+				for _, sps := range sensorStates {
+					if sps.State == "on" {
+						desiredState = "on"
+						break
+					}
+				}
+				// get the plug
+				plug, err := db.GetPlug(s.PlugId)
+				if err != nil {
+					slog.Error("failed to get plug", "plugId", s.PlugId, "err", err)
 					break
 				}
-			}
-			// get the plug's IP address
-			plug, err := db.GetPlug(plugId)
-			if err != nil {
-				slog.Error("failed to get plug", "plugId", plugId, "err", err)
-				break
-			}
-			if plug.State != state || time.Since(plug.UpdatedAt) > updateInterval {
-				slog.Info("notify plug", "plugId", plug.PlugId, "state", state, "ipAddress", plug.IpAddress)
-				resp, err := http.Get(fmt.Sprintf("http://%s/relay/0?turn=%s", plug.IpAddress, state))
-				var respMsg string
-				if err != nil {
-					slog.Warn("failed to notify plug", "plugId", plug.PlugId, "err", err)
-					respMsg = err.Error()
-				} else {
-					slog.Debug("notify plug response", "resp", resp)
-					respMsg = resp.Status
-				}
-				if _, err := db.UpdatePlugState(plugId, state, respMsg); err != nil {
-					slog.Warn("failed to update plug", "plugId", plug.PlugId, "err", err)
+				// update the plug if needed
+				if plug.State != desiredState || time.Since(plug.UpdatedAt) > updateInterval {
+					slog.Info("notify plug", "plugId", plug.PlugId, "state", desiredState, "ipAddress", plug.IpAddress)
+					resp, err := http.Get(fmt.Sprintf("http://%s/relay/0?turn=%s", plug.IpAddress, desiredState))
+					var respMsg string
+					if err != nil {
+						slog.Warn("failed to notify plug", "plugId", plug.PlugId, "err", err)
+						respMsg = err.Error()
+					} else {
+						slog.Debug("notify plug response", "resp", resp)
+						respMsg = resp.Status
+					}
+					if _, err := db.UpdatePlugState(plug.PlugId, desiredState, respMsg); err != nil {
+						slog.Warn("failed to update plug", "plugId", plug.PlugId, "err", err)
+					}
 				}
 			}
 
@@ -92,10 +135,10 @@ func main() {
 	done := make(chan struct{})
 	defer close(done)
 
-	plugUpdates := make(chan string)
-	defer close(plugUpdates)
+	sensorUpdates := make(chan string)
+	defer close(sensorUpdates)
 
-	go processPlugUpdates(plugUpdates, done)
+	go processSensorUpdates(sensorUpdates, done)
 
-	server.StartServer(plugUpdates, *vLogLevel)
+	server.StartServer(sensorUpdates, *vLogLevel)
 }

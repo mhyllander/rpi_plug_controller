@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,7 +22,7 @@ var rootTemplate *template.Template
 
 type contextKey string
 
-const plugUpdatesKey contextKey = "plugUpdates"
+const sensorUpdatesKey contextKey = "sensorUpdates"
 
 type WebSensor struct {
 	SensorId  string
@@ -29,6 +30,8 @@ type WebSensor struct {
 	PlugId    string
 	State     string
 	Value     string
+	Min       string
+	Max       string
 	UpdatedAt string
 }
 
@@ -46,9 +49,10 @@ type RootData struct {
 	Plugs     []WebPlug
 }
 
-func NoBreak(d string) template.HTML {
-	s := strings.ReplaceAll(d, ":", ":&NoBreak;")
-	s = strings.ReplaceAll(s, "-", "-&NoBreak;")
+func NoBreak(s string) template.HTML {
+	for _, ch := range []string{":", "-", "."} {
+		s = strings.ReplaceAll(s, ch, ch+"&NoBreak;")
+	}
 	return template.HTML(s)
 }
 
@@ -60,7 +64,7 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 	}
 	webSensors := make([]WebSensor, 0, 10)
 	for _, s := range sensors {
-		webSensors = append(webSensors, WebSensor{SensorId: s.SensorId, IpAddress: s.IpAddress, PlugId: s.PlugId, State: s.State, Value: s.Value, UpdatedAt: s.UpdatedAt.Format(time.DateTime)})
+		webSensors = append(webSensors, WebSensor{SensorId: s.SensorId, IpAddress: s.IpAddress, PlugId: s.PlugId, State: s.State, Value: s.Value, Min: s.Min, Max: s.Max, UpdatedAt: s.UpdatedAt.Format(time.DateTime)})
 	}
 
 	plugs, err := db.GetAllPlugs()
@@ -83,38 +87,61 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleUpdateSensor(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	var plugUpdates chan<- string = ctx.Value(plugUpdatesKey).(chan<- string)
-
-	ipAddress := strings.Split(r.RemoteAddr, ":")[0]
+func handleUpdateSensorPlug(w http.ResponseWriter, r *http.Request) {
 	sensorId := chi.URLParam(r, "sensorId")
 	plugId := chi.URLParam(r, "plugId")
-	state := chi.URLParam(r, "state")
-	value := chi.URLParam(r, "value")
-	slog.Debug("POST /sensor", "sensorId", sensorId, "ipAddress", ipAddress, "plugId", plugId, "state", state, "value", value)
+	min := chi.URLParam(r, "min")
+	max := chi.URLParam(r, "max")
+	slog.Debug("GET /v2/sensor/*/plug/*/min/*/max", "sensorId", sensorId, "plugId", plugId, "min", min, "max", max)
 
-	switch state {
-	case "on", "off":
-	default:
-		slog.Error("bad state", "state", state)
+	slog.Info("update sensor plug", "sensorId", sensorId, "plugId", plugId, "min", min, "max", max)
+
+	if _, err := strconv.ParseFloat(min, 32); err != nil {
+		slog.Error("failed to convert to float", "min", min, "err", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if _, err := strconv.ParseFloat(max, 32); err != nil {
+		slog.Error("failed to convert to float", "max", max, "err", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	if _, err := db.UpdateSensor(sensorId, ipAddress, plugId, state, value); err != nil {
+	if _, err := db.CreateSensorPlug(sensorId, plugId, min, max); err != nil {
+
 		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 
-	// send the plugId for further processing
-	plugUpdates <- plugId
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func handleUpdateSensorValue(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	var sensorUpdates chan<- string = ctx.Value(sensorUpdatesKey).(chan<- string)
+
+	ipAddress := strings.Split(r.RemoteAddr, ":")[0]
+	sensorId := chi.URLParam(r, "sensorId")
+	value := chi.URLParam(r, "value")
+	slog.Debug("GET /sensor/*/value", "sensorId", sensorId, "ipAddress", ipAddress, "value", value)
+
+	slog.Info("update sensor value", "sensorId", sensorId, "ipAddress", ipAddress, "value", value)
+
+	if err := db.UpdateSensorValue(sensorId, ipAddress, value); err != nil {
+		slog.Error("failed to update sensor value", "err", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	// send the sensorId for further processing
+	sensorUpdates <- sensorId
 
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func handleDeleteSensor(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	var plugUpdates chan<- string = ctx.Value(plugUpdatesKey).(chan<- string)
+	var sensorUpdates chan<- string = ctx.Value(sensorUpdatesKey).(chan<- string)
 
 	sensorId := chi.URLParam(r, "sensorId")
 	plugId := chi.URLParam(r, "plugId") // optional, "" if not provided
@@ -142,7 +169,7 @@ func handleDeleteSensor(w http.ResponseWriter, r *http.Request) {
 
 	// send the plugIds for further processing
 	for _, pid := range plugIds {
-		plugUpdates <- pid
+		sensorUpdates <- pid
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -151,7 +178,7 @@ func handleDeleteSensor(w http.ResponseWriter, r *http.Request) {
 func handleUpdatePlug(w http.ResponseWriter, r *http.Request) {
 	plugId := chi.URLParam(r, "plugId")
 	ipAddress := chi.URLParam(r, "ipAddress")
-	slog.Debug("POST /plug", "plugId", plugId, "ipAddress", ipAddress)
+	slog.Debug("GET /plug", "plugId", plugId, "ipAddress", ipAddress)
 	if _, err := db.CreatePlug(plugId, ipAddress); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
@@ -167,7 +194,7 @@ func handleDeletePlug(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func StartServer(plugUpdates chan<- string, logLevel string) {
+func StartServer(sensorUpdates chan<- string, logLevel string) {
 	var err error
 
 	r := chi.NewRouter()
@@ -202,24 +229,24 @@ func StartServer(plugUpdates chan<- string, logLevel string) {
 	rootTemplate = template.Must(template.New("root.gohtml").Funcs(webFunctions).ParseFiles("web/root.gohtml"))
 
 	// Sensor API
-	// Custom middleware to add plugUpdatesKey
-	plugUpdatesMiddleware := func(next http.Handler) http.Handler {
+	// Custom middleware to add sensorUpdatesKey
+	sensorUpdatesMiddleware := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := context.WithValue(r.Context(), plugUpdatesKey, plugUpdates)
+			ctx := context.WithValue(r.Context(), sensorUpdatesKey, sensorUpdates)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 	r.Route("/sensor/{sensorId}", func(r chi.Router) {
-		r.Use(plugUpdatesMiddleware)
-		r.Get("/{plugId}/{state}", handleUpdateSensor)
-		r.Get("/{plugId}/{state}/{value}", handleUpdateSensor)
+		r.Use(sensorUpdatesMiddleware)
+		r.Get("/plug/{plugId}/min/{min}/max/{max}", handleUpdateSensorPlug)
+		r.Get("/value/{value}", handleUpdateSensorValue)
 		r.Delete("/{plugId}", handleDeleteSensor)
 		r.Delete("/", handleDeleteSensor)
 	})
 
 	// Plug API
 	r.Route("/plug/{plugId}", func(r chi.Router) {
-		r.Get("/{ipAddress}", handleUpdatePlug)
+		r.Get("/ip/{ipAddress}", handleUpdatePlug)
 		r.Delete("/", handleDeletePlug)
 	})
 
