@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -29,9 +30,9 @@ type WebSensor struct {
 	IpAddress string
 	PlugId    string
 	State     string
-	Value     string
-	Min       string
-	Max       string
+	Value     float32
+	Min       float32
+	Max       float32
 	UpdatedAt string
 }
 
@@ -49,11 +50,18 @@ type RootData struct {
 	Plugs     []WebPlug
 }
 
-func NoBreak(s string) template.HTML {
-	for _, ch := range []string{":", "-", "."} {
-		s = strings.ReplaceAll(s, ch, ch+"&NoBreak;")
+func NoBreak[V string | float32](s V) template.HTML {
+	var t string
+	switch any(s).(type) {
+	case string:
+		t = any(s).(string)
+	case float32:
+		t = fmt.Sprintf("%0.1f", any(s).(float32))
 	}
-	return template.HTML(s)
+	for _, ch := range []string{":", "-", "."} {
+		t = strings.ReplaceAll(t, ch, ch+"&NoBreak;")
+	}
+	return template.HTML(t)
 }
 
 func getRoot(w http.ResponseWriter, r *http.Request) {
@@ -96,18 +104,20 @@ func handleUpdateSensorPlug(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("update sensor plug", "sensorId", sensorId, "plugId", plugId, "min", min, "max", max)
 
-	if _, err := strconv.ParseFloat(min, 32); err != nil {
+	minF, err := strconv.ParseFloat(min, 32)
+	if err != nil {
 		slog.Error("failed to convert to float", "min", min, "err", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	if _, err := strconv.ParseFloat(max, 32); err != nil {
+	maxF, err := strconv.ParseFloat(max, 32)
+	if err != nil {
 		slog.Error("failed to convert to float", "max", max, "err", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	if _, err := db.CreateSensorPlug(sensorId, plugId, min, max); err != nil {
+	if _, err := db.CreateSensorPlug(sensorId, plugId, float32(minF), float32(maxF)); err != nil {
 
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -127,7 +137,14 @@ func handleUpdateSensorValue(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("update sensor value", "sensorId", sensorId, "ipAddress", ipAddress, "value", value)
 
-	if err := db.UpdateSensorValue(sensorId, ipAddress, value); err != nil {
+	valueF, err := strconv.ParseFloat(value, 32)
+	if err != nil {
+		slog.Error("failed to convert to float", "value", value, "err", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if err := db.UpdateSensorValue(sensorId, ipAddress, float32(valueF)); err != nil {
 		slog.Error("failed to update sensor value", "err", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -154,7 +171,7 @@ func handleDeleteSensor(w http.ResponseWriter, r *http.Request) {
 	if plugId != "" {
 		plugIds = append(plugIds, plugId)
 	} else {
-		if plugs, err := db.GetPlugsRelatedToSensor(sensorId); err == nil {
+		if plugs, err := db.GetSensorsById(sensorId); err == nil {
 			for _, plug := range plugs {
 				plugIds = append(plugIds, plug.PlugId)
 			}
@@ -224,7 +241,8 @@ func StartServer(sensorUpdates chan<- string, logLevel string) {
 	// status page
 	r.Get("/", getRoot)
 	webFunctions := template.FuncMap{
-		"NoBreak": NoBreak,
+		"NoBreak":  NoBreak[string],
+		"NoBreakF": NoBreak[float32],
 	}
 	rootTemplate = template.Must(template.New("root.gohtml").Funcs(webFunctions).ParseFiles("web/root.gohtml"))
 

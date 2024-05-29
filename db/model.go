@@ -10,9 +10,9 @@ type Sensor struct {
 	IpAddress string
 	PlugId    string
 	State     string
-	Value     string
-	Min       string
-	Max       string
+	Value     float32
+	Min       float32
+	Max       float32
 }
 
 type Plug struct {

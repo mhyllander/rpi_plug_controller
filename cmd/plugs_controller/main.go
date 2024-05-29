@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/mhyllander/rpi_plug_controller/db"
@@ -15,14 +14,14 @@ import (
 )
 
 // the interval between updates if the state doesn't change
-const updateInterval = time.Minute * 15
+const updateInterval = time.Minute * 60
 
 func processSensorUpdates(sensorUpdates <-chan string, done <-chan struct{}) {
 	for {
 		select {
 		case sensorId := <-sensorUpdates:
 			slog.Debug("processing state updates for sensor", "sensorId", sensorId)
-			sensors, err := db.GetPlugsRelatedToSensor(sensorId)
+			sensors, err := db.GetSensorsById(sensorId)
 			if err != nil {
 				slog.Error("failed ot get states for plug", "plugId", sensorId, "err", err)
 				break
@@ -34,47 +33,32 @@ func processSensorUpdates(sensorUpdates <-chan string, done <-chan struct{}) {
 			// check each plug related to the sensor
 			for _, s := range sensors {
 				// update the desired plug state
-				cur, err := strconv.ParseFloat(s.Value, 32)
-				if err != nil {
-					slog.Error("failed to convert to float", "value", s.Value, "err", err, "sensorId", s.SensorId, "plugId", s.PlugId)
-					continue
-				}
-				min, err := strconv.ParseFloat(s.Min, 32)
-				if err != nil {
-					slog.Error("failed to convert to float", "min", s.Min, "err", err, "sensorId", s.SensorId, "plugId", s.PlugId)
-					continue
-				}
-				max, err := strconv.ParseFloat(s.Max, 32)
-				if err != nil {
-					slog.Error("failed to convert to float", "max", s.Max, "err", err, "sensorId", s.SensorId, "plugId", s.PlugId)
-					continue
-				}
 				newState := s.State
 				switch {
-				case cur > max:
+				case s.Value > s.Max:
 					newState = "on"
-				case cur < min:
+				case s.Value < s.Min:
 					newState = "off"
 				case newState == "":
 					newState = "off"
 				}
 				if s.State != newState {
 					s.State = newState
-					if _, err := db.UpdateSensorPlugState(s.SensorId, s.PlugId, newState); err != nil {
-						slog.Error("failed to update sensor plug state", "sensorId", s.SensorId, "plugId", s.PlugId, "err", err)
+					if _, err := db.UpdatePlugDesiredState(s.SensorId, s.PlugId, newState); err != nil {
+						slog.Error("failed to update desired plug state", "sensorId", s.SensorId, "plugId", s.PlugId, "err", err)
 						continue
 					}
 				}
 
 				// Check if any sensor wants the plug to be on
-				sensorStates, err := db.GetSensorStatesForPlug(s.PlugId)
+				desiredPlugStates, err := db.GetDesiredStatesForPlug(s.PlugId)
 				if err != nil {
 					slog.Error("failed to get desired states for plug", "plugId", s.PlugId, "err", err)
 					continue
 				}
 				desiredState := "off"
-				for _, sps := range sensorStates {
-					if sps.State == "on" {
+				for _, ps := range desiredPlugStates {
+					if ps.State == "on" {
 						desiredState = "on"
 						break
 					}
