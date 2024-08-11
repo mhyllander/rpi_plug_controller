@@ -38,8 +38,8 @@
             <thead>
                 <tr>
                     <th>Sensor</th>
-                    <th>Value</th>
                     <th>Plug</th>
+                    <th>Value</th>
                     <th>State</th>
                     <th>Updated</th>
                 </tr>
@@ -53,8 +53,8 @@
                             <div class="info">({{ .IpAddress }})</div>
                         </a>
                     </td>
-                    <td>{{ .Value | NoBreakF }}</td>
-                    <td>{{ .PlugId }}<br><div class=info>{{ .Min | NoBreakF }}&lt;{{ .Max | NoBreakF }}</div></td>
+                    <td>{{ .PlugId }}<br><div class=info>{{ .Min | NoBreak }}&lt;{{ .Max | NoBreak }}</div></td>
+                    <td>{{ .Value | NoBreak }}</td>
                     <td>{{ .State }}</td>
                     <td><span>{{ .UpdatedAt | NoBreak }}</span></td>
                 </tr>
@@ -67,8 +67,8 @@
                 <tr>
                     <th>Plug</th>
                     <th>State</th>
-                    <th>Updated</th>
                     <th>Response</th>
+                    <th>Updated</th>
                 </tr>
             </thead>
             <tbody>
@@ -81,8 +81,8 @@
                         </a>
                     </td>
                     <td>{{ .State }}</td>
-                    <td><span>{{ .UpdatedAt | NoBreak }}</span></td>
                     <td>{{ .Response }}</td>
+                    <td><span>{{ .UpdatedAt | NoBreak }}</span></td>
                 </tr>
                 {{ end -}}
             </tbody>

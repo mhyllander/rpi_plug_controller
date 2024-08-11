@@ -30,9 +30,9 @@ type WebSensor struct {
 	IpAddress string
 	PlugId    string
 	State     string
-	Value     float32
-	Min       float32
-	Max       float32
+	Value     string
+	Min       string
+	Max       string
 	UpdatedAt string
 }
 
@@ -50,18 +50,11 @@ type RootData struct {
 	Plugs     []WebPlug
 }
 
-func NoBreak[V string | float32](s V) template.HTML {
-	var t string
-	switch any(s).(type) {
-	case string:
-		t = any(s).(string)
-	case float32:
-		t = fmt.Sprintf("%0.1f", any(s).(float32))
+func NoBreak(s string) template.HTML {
+	for _, ch := range []string{":", "-", ".", ","} {
+		s = strings.ReplaceAll(s, ch, ch+"&NoBreak;")
 	}
-	for _, ch := range []string{":", "-", "."} {
-		t = strings.ReplaceAll(t, ch, ch+"&NoBreak;")
-	}
-	return template.HTML(t)
+	return template.HTML(s)
 }
 
 func getRoot(w http.ResponseWriter, r *http.Request) {
@@ -72,7 +65,7 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 	}
 	webSensors := make([]WebSensor, 0, 10)
 	for _, s := range sensors {
-		webSensors = append(webSensors, WebSensor{SensorId: s.SensorId, IpAddress: s.IpAddress, PlugId: s.PlugId, State: s.State, Value: s.Value, Min: s.Min, Max: s.Max, UpdatedAt: s.UpdatedAt.Format(time.DateTime)})
+		webSensors = append(webSensors, WebSensor{SensorId: s.SensorId, IpAddress: s.IpAddress, PlugId: s.PlugId, State: s.State, Value: fmt.Sprintf("%0.1f", s.Value), Min: fmt.Sprintf("%0.1f", s.Min), Max: fmt.Sprintf("%0.1f", s.Max), UpdatedAt: s.UpdatedAt.Format(time.DateTime)})
 	}
 
 	plugs, err := db.GetAllPlugs()
@@ -241,8 +234,7 @@ func StartServer(sensorUpdates chan<- string, logLevel string) {
 	// status page
 	r.Get("/", getRoot)
 	webFunctions := template.FuncMap{
-		"NoBreak":  NoBreak[string],
-		"NoBreakF": NoBreak[float32],
+		"NoBreak": NoBreak,
 	}
 	rootTemplate = template.Must(template.New("root.gohtml").Funcs(webFunctions).ParseFiles("web/root.gohtml"))
 
