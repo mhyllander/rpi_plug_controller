@@ -1,6 +1,6 @@
 module github.com/mhyllander/rpi_plug_controller
 
-go 1.22.6
+go 1.23.0
 
 require (
 	github.com/go-chi/chi/v5 v5.1.0
