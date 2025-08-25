@@ -14,7 +14,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	httplog "github.com/mhyllander/go-chi-httplog/v2"
+	"github.com/go-chi/httplog/v2"
 	"github.com/mhyllander/rpi_plug_controller/db"
 	"github.com/mhyllander/rpi_plug_controller/logs"
 )
