@@ -14,9 +14,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/httplog/v2"
+	"github.com/go-chi/httplog/v3"
 	"github.com/mhyllander/rpi_plug_controller/db"
-	"github.com/mhyllander/rpi_plug_controller/logs"
 )
 
 var rootTemplate *template.Template
@@ -209,21 +208,10 @@ func StartServer(sensorUpdates chan<- string, logLevel string) {
 
 	r := chi.NewRouter()
 
-	// Logger
-	logger := httplog.NewLogger("plugs-controller", httplog.Options{
-		JSON:             true,
-		LogLevel:         logs.SetLoggerOpts(logLevel).Level.Level(),
-		Concise:          true,
-		RequestHeaders:   false,
-		SourceFieldName:  "",
-		TimeFieldName:    "time",
-		MessageFieldName: "msg",
-	})
-
 	// A good base middleware stack
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
-	r.Use(httplog.RequestLogger(logger))
+	r.Use(httplog.RequestLogger(slog.Default(), &httplog.Options{}))
 	r.Use(middleware.Recoverer)
 
 	// Set a timeout value on the request context (ctx), that will signal
@@ -260,7 +248,12 @@ func StartServer(sensorUpdates chan<- string, logLevel string) {
 		r.Delete("/", handleDeletePlug)
 	})
 
-	err = http.ListenAndServe(":3333", r)
+	srv := &http.Server{
+		Addr:     ":3333",
+		Handler:  r,
+		ErrorLog: slog.NewLogLogger(slog.Default().Handler(), slog.LevelError),
+	}
+	err = srv.ListenAndServe()
 	if errors.Is(err, http.ErrServerClosed) {
 		slog.Info("server closed")
 	} else if err != nil {
