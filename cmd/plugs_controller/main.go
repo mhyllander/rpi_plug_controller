@@ -44,14 +44,14 @@ func processSensorUpdates(sensorUpdates <-chan string, done <-chan struct{}) {
 				}
 				if s.State != newState {
 					s.State = newState
-					if _, err := db.UpdatePlugDesiredState(s.SensorId, s.PlugId, newState); err != nil {
+					if _, err := db.UpdateSensorStateForPlug(s.SensorId, s.PlugId, newState); err != nil {
 						slog.Error("failed to update desired plug state", "sensorId", s.SensorId, "plugId", s.PlugId, "err", err)
 						continue
 					}
 				}
 
 				// Check if any sensor wants the plug to be on
-				desiredPlugStates, err := db.GetDesiredStatesForPlug(s.PlugId)
+				desiredPlugStates, err := db.GetSensorStatesForPlug(s.PlugId)
 				if err != nil {
 					slog.Error("failed to get desired states for plug", "plugId", s.PlugId, "err", err)
 					continue

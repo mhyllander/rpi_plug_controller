@@ -50,19 +50,6 @@ func CreateSensorPlug(sensorId, plugId string, min, max float32) (*Sensor, error
 	return &sensor, nil
 }
 
-// Update the desired state for a sensor and plug.
-func UpdatePlugDesiredState(sensorId, plugId, state string) (*Sensor, error) {
-	var sensor Sensor
-	if result := myDb.Where(&Sensor{SensorId: sensorId, PlugId: plugId}).FirstOrInit(&sensor); result.Error != nil {
-		return nil, result.Error
-	}
-	sensor.State = state
-	if result := myDb.Save(&sensor); result.Error != nil {
-		return nil, result.Error
-	}
-	return &sensor, nil
-}
-
 // Updates the value in all sensors with sensorId.
 func UpdateSensorValue(sensorId, ipAddress string, value float32) error {
 	var sensors []Sensor
@@ -79,8 +66,21 @@ func UpdateSensorValue(sensorId, ipAddress string, value float32) error {
 	return nil
 }
 
-// Get desired states for a plugId. Useful for updating plug state when a sensor sends an update.
-func GetDesiredStatesForPlug(plugId string) ([]Sensor, error) {
+// Update the sensor state for a plug.
+func UpdateSensorStateForPlug(sensorId, plugId, state string) (*Sensor, error) {
+	var sensor Sensor
+	if result := myDb.Where(&Sensor{SensorId: sensorId, PlugId: plugId}).FirstOrInit(&sensor); result.Error != nil {
+		return nil, result.Error
+	}
+	sensor.State = state
+	if result := myDb.Save(&sensor); result.Error != nil {
+		return nil, result.Error
+	}
+	return &sensor, nil
+}
+
+// Get all sensors' states for a plug. Useful for updating plug state when a sensor sends an update.
+func GetSensorStatesForPlug(plugId string) ([]Sensor, error) {
 	var sensors []Sensor
 	if result := myDb.Where(&Sensor{PlugId: plugId}).Select("State").Find(&sensors); result.Error != nil {
 		return nil, result.Error
