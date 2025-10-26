@@ -23,7 +23,7 @@ func processSensorUpdates(sensorUpdates <-chan string, done <-chan struct{}) {
 			slog.Debug("processing state updates for sensor", "sensorId", sensorId)
 			sensors, err := db.GetSensorsById(sensorId)
 			if err != nil {
-				slog.Error("failed ot get states for plug", "plugId", sensorId, "err", err)
+				slog.Error("failed to get plugs for sensor", "sensorId", sensorId, "err", err)
 				break
 			}
 			if len(sensors) == 0 {
@@ -37,7 +37,7 @@ func processSensorUpdates(sensorUpdates <-chan string, done <-chan struct{}) {
 				switch {
 				case s.Value > s.Max:
 					newState = "on"
-				case s.Value < s.Min:
+				case s.Value <= s.Min:
 					newState = "off"
 				case newState == "":
 					newState = "off"
