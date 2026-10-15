@@ -122,7 +122,7 @@ func handleUpdateSensorValue(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var sensorUpdates chan<- string = ctx.Value(sensorUpdatesKey).(chan<- string)
 
-	ipAddress := strings.Split(r.RemoteAddr, ":")[0]
+	ipAddress, _, _ := strings.Cut(r.RemoteAddr, ":")
 	sensorId := chi.URLParam(r, "sensorId")
 	value := chi.URLParam(r, "value")
 	slog.Debug("GET /sensor/*/value", "sensorId", sensorId, "ipAddress", ipAddress, "value", value)
