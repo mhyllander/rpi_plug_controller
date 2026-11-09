@@ -47,6 +47,8 @@ type WebSensor struct {
 	Value     string
 	Min       string
 	Max       string
+	MinInput  string // full precision, for the threshold form
+	MaxInput  string
 	UpdatedAt string
 }
 
@@ -111,6 +113,8 @@ func (s *Server) getRoot(w http.ResponseWriter, r *http.Request) {
 			Value:     fmt.Sprintf("%0.1f", sensor.Value),
 			Min:       fmt.Sprintf("%0.1f", sensor.Min),
 			Max:       fmt.Sprintf("%0.1f", sensor.Max),
+			MinInput:  strconv.FormatFloat(float64(sensor.Min), 'f', -1, 32),
+			MaxInput:  strconv.FormatFloat(float64(sensor.Max), 'f', -1, 32),
 			UpdatedAt: sensor.UpdatedAt.Format(time.DateTime),
 		})
 	}
@@ -149,37 +153,75 @@ func (s *Server) getRoot(w http.ResponseWriter, r *http.Request) {
 	w.Write(page.Bytes())
 }
 
-func (s *Server) handleUpdateSensorPlug(w http.ResponseWriter, r *http.Request) {
-	sensorId := chi.URLParam(r, "sensorId")
-	plugId := chi.URLParam(r, "plugId")
-	minParam := chi.URLParam(r, "min")
-	maxParam := chi.URLParam(r, "max")
+// Validates and stores the thresholds of a sensor/plug pair, and notifies the
+// controller so that the new thresholds take effect immediately.
+// Returns the HTTP status code to respond with, and an error message for
+// client errors.
+func (s *Server) setThresholds(ctx context.Context, sensorId, plugId, minParam, maxParam string) (int, string) {
 	slog.Info("update sensor plug", "sensorId", sensorId, "plugId", plugId, "min", minParam, "max", maxParam)
 
 	minValue, err := parseFiniteFloat32(minParam)
 	if err != nil {
 		slog.Error("failed to convert to float", "min", minParam, "err", err)
-		http.Error(w, "min must be a number", http.StatusBadRequest)
-		return
+		return http.StatusBadRequest, "min must be a number"
 	}
 	maxValue, err := parseFiniteFloat32(maxParam)
 	if err != nil {
 		slog.Error("failed to convert to float", "max", maxParam, "err", err)
-		http.Error(w, "max must be a number", http.StatusBadRequest)
-		return
+		return http.StatusBadRequest, "max must be a number"
 	}
 	if minValue > maxValue {
-		http.Error(w, "min must not be greater than max", http.StatusBadRequest)
-		return
+		return http.StatusBadRequest, "min must not be greater than max"
 	}
 
 	if err := s.store.UpsertSensorPlug(sensorId, plugId, minValue, maxValue); err != nil {
 		slog.Error("failed to update sensor plug", "sensorId", sensorId, "plugId", plugId, "err", err)
-		w.WriteHeader(http.StatusInternalServerError)
+		return http.StatusInternalServerError, ""
+	}
+
+	s.notifier.SensorUpdated(ctx, sensorId)
+
+	return http.StatusNoContent, ""
+}
+
+func (s *Server) handleUpdateSensorPlug(w http.ResponseWriter, r *http.Request) {
+	status, message := s.setThresholds(
+		r.Context(),
+		chi.URLParam(r, "sensorId"),
+		chi.URLParam(r, "plugId"),
+		chi.URLParam(r, "min"),
+		chi.URLParam(r, "max"),
+	)
+	if message != "" {
+		http.Error(w, message, status)
+		return
+	}
+	w.WriteHeader(status)
+}
+
+// Handles the threshold form on the status page.
+func (s *Server) handleUpdateSensorPlugForm(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	status, message := s.setThresholds(
+		r.Context(),
+		chi.URLParam(r, "sensorId"),
+		chi.URLParam(r, "plugId"),
+		r.PostForm.Get("min"),
+		r.PostForm.Get("max"),
+	)
+	if message != "" {
+		http.Error(w, message, status)
+		return
+	}
+	if status != http.StatusNoContent {
+		w.WriteHeader(status)
+		return
+	}
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func (s *Server) handleUpdateSensorValue(w http.ResponseWriter, r *http.Request) {
@@ -295,6 +337,7 @@ func (s *Server) routes() http.Handler {
 	// Sensor API
 	r.Route("/sensor/{sensorId}", func(r chi.Router) {
 		r.Get("/plug/{plugId}/min/{min}/max/{max}", s.handleUpdateSensorPlug)
+		r.Post("/plug/{plugId}/thresholds", s.handleUpdateSensorPlugForm)
 		r.Get("/value/{value}", s.handleUpdateSensorValue)
 		r.Delete("/{plugId}", s.handleDeleteSensor)
 		r.Delete("/", s.handleDeleteSensor)

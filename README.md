@@ -13,7 +13,8 @@ A plug is turned on if any linked sensor wants it on. The plug is notified
 refreshed every 60 minutes otherwise. A failed notification is retried with
 the next sensor reading.
 
-A status page showing all sensors and plugs is served at `/`.
+A status page showing all sensors and plugs is served at `/`. The `min` and
+`max` thresholds of a sensor/plug pair can be edited on the page.
 
 ## Running
 

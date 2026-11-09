@@ -2,7 +2,6 @@
 <html>
     <head>
         <title>{{.PageTitle}}</title>
-        <meta http-equiv="refresh" content="30">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
             * {
@@ -18,6 +17,14 @@
             thead {
                 color: white;
                 background-color: darkgreen;
+            }
+            .thresholds {
+                margin-top: 5px;
+                font-size: smaller;
+                white-space: nowrap;
+            }
+            .thresholds input {
+                width: 5em;
             }
             .info {
                 margin-top: 5px;
@@ -48,7 +55,15 @@
                             <div class="info">({{ .IpAddress }})</div>
                         </a>
                     </td>
-                    <td>{{ .PlugId }}<br><div class=info>{{ .Min | NoBreak }}&lt;{{ .Max | NoBreak }}</div></td>
+                    <td>
+                        {{ .PlugId }}
+                        <form class="thresholds" method="post" action="/sensor/{{ .SensorId }}/plug/{{ .PlugId }}/thresholds">
+                            <input type="number" step="any" name="min" value="{{ .MinInput }}" required aria-label="min">
+                            &lt;
+                            <input type="number" step="any" name="max" value="{{ .MaxInput }}" required aria-label="max">
+                            <button type="submit">Set</button>
+                        </form>
+                    </td>
                     <td>{{ .Value | NoBreak }}</td>
                     <td>{{ .State }}</td>
                     <td><span>{{ .UpdatedAt | NoBreak }}</span></td>
@@ -82,5 +97,17 @@
                 {{ end -}}
             </tbody>
         </table>
+        <script>
+            // Refresh every 30 seconds, unless a threshold is being edited.
+            let editing = false;
+            document.querySelectorAll(".thresholds input").forEach(input => {
+                input.addEventListener("input", () => { editing = true; });
+            });
+            setInterval(() => {
+                if (!editing && !document.activeElement.matches(".thresholds input")) {
+                    location.reload();
+                }
+            }, 30000);
+        </script>
    </body>
 </html>
