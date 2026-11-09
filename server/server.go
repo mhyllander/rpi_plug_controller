@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/httplog/v3"
 	"github.com/mhyllander/rpi_plug_controller/db"
+	"github.com/mhyllander/rpi_plug_controller/web"
 )
 
 var rootTemplate *template.Template
@@ -110,7 +111,7 @@ func handleUpdateSensorPlug(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := db.CreateSensorPlug(sensorId, plugId, float32(minF), float32(maxF)); err != nil {
-
+		slog.Error("failed to update sensor plug", "sensorId", sensorId, "plugId", plugId, "err", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -122,7 +123,7 @@ func handleUpdateSensorValue(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var sensorUpdates chan<- string = ctx.Value(sensorUpdatesKey).(chan<- string)
 
-	ipAddress, _, _ := strings.Cut(r.RemoteAddr, ":")
+	ipAddress := middleware.GetClientIP(ctx)
 	sensorId := chi.URLParam(r, "sensorId")
 	value := chi.URLParam(r, "value")
 	slog.Debug("GET /sensor/*/value", "sensorId", sensorId, "ipAddress", ipAddress, "value", value)
@@ -157,7 +158,7 @@ func handleDeleteSensor(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("DELETE /sensor", "sensorId", sensorId, "plugId", plugId)
 
 	// Collect the plugIds that are affected by deleting the sensor.
-	// If no specifc plugId has been provided, we will be updating all
+	// If no specific plugId has been provided, we will be updating all
 	// related plugs, and must get them before deleting the sensor.
 	plugIds := make([]string, 0, 10)
 	if plugId != "" {
@@ -173,7 +174,9 @@ func handleDeleteSensor(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := db.DeleteSensor(sensorId, plugId); err != nil {
+		slog.Error("failed to delete sensor", "sensorId", sensorId, "plugId", plugId, "err", err)
 		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 
 	// send the plugIds for further processing
@@ -189,7 +192,9 @@ func handleUpdatePlug(w http.ResponseWriter, r *http.Request) {
 	ipAddress := chi.URLParam(r, "ipAddress")
 	slog.Debug("GET /plug", "plugId", plugId, "ipAddress", ipAddress)
 	if _, err := db.CreatePlug(plugId, ipAddress); err != nil {
+		slog.Error("failed to update plug", "plugId", plugId, "err", err)
 		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -198,7 +203,9 @@ func handleDeletePlug(w http.ResponseWriter, r *http.Request) {
 	plugId := chi.URLParam(r, "plugId")
 	slog.Debug("DELETE /plug", "plugId", plugId)
 	if err := db.DeletePlug(plugId); err != nil {
+		slog.Error("failed to delete plug", "plugId", plugId, "err", err)
 		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -210,7 +217,7 @@ func StartServer(sensorUpdates chan<- string, logLevel string) {
 
 	// A good base middleware stack
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
+	r.Use(middleware.ClientIPFromRemoteAddr)
 	r.Use(httplog.RequestLogger(slog.Default(), &httplog.Options{}))
 	r.Use(middleware.Recoverer)
 
@@ -224,7 +231,7 @@ func StartServer(sensorUpdates chan<- string, logLevel string) {
 	webFunctions := template.FuncMap{
 		"NoBreak": NoBreak,
 	}
-	rootTemplate = template.Must(template.New("root.gohtml").Funcs(webFunctions).ParseFiles("web/root.gohtml"))
+	rootTemplate = template.Must(template.New("root.gohtml").Funcs(webFunctions).Parse(web.RootTemplate))
 
 	// Sensor API
 	// Custom middleware to add sensorUpdatesKey

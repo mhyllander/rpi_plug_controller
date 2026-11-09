@@ -19,9 +19,8 @@ test:
 	# go test
 
 deploy: test build-rpi
-	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo systemctl stop plugs_controller.service; [ -d bin ] || mkdir bin; [ -d plugs ] && rm -rf plugs/web || mkdir plugs'
+	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo systemctl stop plugs_controller.service; [ -d bin ] || mkdir bin'
 	rsync -azv $(BINARIES_RPI) $(DEPLOY_USER)@$(DEPLOY_HOST):bin/
-	rsync -azv web $(DEPLOY_USER)@$(DEPLOY_HOST):plugs/
 	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) sudo systemctl start plugs_controller.service
 
 clean:
