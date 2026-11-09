@@ -1,96 +1,43 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
-	"time"
+	"os/signal"
+	"syscall"
 
+	"github.com/mhyllander/rpi_plug_controller/controller"
 	"github.com/mhyllander/rpi_plug_controller/db"
 	"github.com/mhyllander/rpi_plug_controller/logs"
 	"github.com/mhyllander/rpi_plug_controller/server"
 )
 
-// the interval between updates if the state doesn't change
-const updateInterval = time.Minute * 60
-
-func processSensorUpdates(sensorUpdates <-chan string, done <-chan struct{}) {
-	for {
-		select {
-		case sensorId := <-sensorUpdates:
-			slog.Debug("processing state updates for sensor", "sensorId", sensorId)
-			sensors, err := db.GetSensorsById(sensorId)
-			if err != nil {
-				slog.Error("failed to get plugs for sensor", "sensorId", sensorId, "err", err)
-				break
-			}
-			if len(sensors) == 0 {
-				slog.Info("no plugs for sensor", "sensorId", sensorId)
-				break
-			}
-			// check each plug related to the sensor
-			for _, s := range sensors {
-				// update the desired plug state
-				newState := s.State
-				switch {
-				case s.Value > s.Max:
-					newState = "on"
-				case s.Value <= s.Min:
-					newState = "off"
-				case newState == "":
-					newState = "off"
-				}
-				if s.State != newState {
-					s.State = newState
-					if _, err := db.UpdateSensorStateForPlug(s.SensorId, s.PlugId, newState); err != nil {
-						slog.Error("failed to update desired plug state", "sensorId", s.SensorId, "plugId", s.PlugId, "err", err)
-						continue
-					}
-				}
-
-				// Check if any sensor wants the plug to be on
-				desiredPlugStates, err := db.GetSensorStatesForPlug(s.PlugId)
-				if err != nil {
-					slog.Error("failed to get desired states for plug", "plugId", s.PlugId, "err", err)
-					continue
-				}
-				desiredState := "off"
-				for _, ps := range desiredPlugStates {
-					if ps.State == "on" {
-						desiredState = "on"
-						break
-					}
-				}
-				// get the plug
-				plug, err := db.GetPlug(s.PlugId)
-				if err != nil {
-					slog.Error("failed to get plug", "plugId", s.PlugId, "err", err)
-					break
-				}
-				// update the plug if needed
-				if plug.State != desiredState || time.Since(plug.UpdatedAt) > updateInterval {
-					slog.Info("notify plug", "plugId", plug.PlugId, "state", desiredState, "ipAddress", plug.IpAddress)
-					resp, err := http.Get(fmt.Sprintf("http://%s/relay/0?turn=%s", plug.IpAddress, desiredState))
-					var respMsg string
-					if err != nil {
-						slog.Warn("failed to notify plug", "plugId", plug.PlugId, "err", err)
-						respMsg = err.Error()
-					} else {
-						slog.Debug("notify plug response", "resp", resp)
-						respMsg = resp.Status
-					}
-					if _, err := db.UpdatePlugState(plug.PlugId, desiredState, respMsg); err != nil {
-						slog.Warn("failed to update plug", "plugId", plug.PlugId, "err", err)
-					}
-				}
-			}
-
-		case <-done:
-			return
-		}
+func run(dbFile string) error {
+	store, err := db.Open(dbFile)
+	if err != nil {
+		return err
 	}
+	defer store.Close()
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	plugController := controller.New(store)
+	controllerDone := make(chan struct{})
+	go func() {
+		defer close(controllerDone)
+		plugController.Run(ctx)
+	}()
+
+	err = server.New(store, plugController).ListenAndServe(ctx)
+
+	// stop the controller, whether the server was shut down or failed
+	stop()
+	<-controllerDone
+	return err
 }
 
 func main() {
@@ -106,23 +53,17 @@ func main() {
 	}
 
 	if *vDb == "" {
-		fmt.Printf("please set the db name")
+		fmt.Fprintln(os.Stderr, "please set the db name")
 		os.Exit(1)
 	}
 
-	logs.InitLogger(*vLogLevel)
+	if err := logs.InitLogger(*vLogLevel); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 
-	// open and initialize database
-	db.Initialize(*vDb)
-	defer db.Close()
-
-	done := make(chan struct{})
-	defer close(done)
-
-	sensorUpdates := make(chan string)
-	defer close(sensorUpdates)
-
-	go processSensorUpdates(sensorUpdates, done)
-
-	server.StartServer(sensorUpdates, *vLogLevel)
+	if err := run(*vDb); err != nil {
+		slog.Error("plugs controller failed", "err", err)
+		os.Exit(1)
+	}
 }

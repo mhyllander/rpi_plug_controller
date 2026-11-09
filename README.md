@@ -10,7 +10,8 @@ one or more plugs with a `min` and `max` threshold:
 
 A plug is turned on if any linked sensor wants it on. The plug is notified
 (`GET http://<plug-ip>/relay/0?turn=on|off`) when its state changes, and
-refreshed every 60 minutes otherwise.
+refreshed every 60 minutes otherwise. A failed notification is retried with
+the next sensor reading.
 
 A status page showing all sensors and plugs is served at `/`.
 
@@ -26,15 +27,16 @@ on port 3333.
 ## API
 
 All endpoints are on port 3333. Parameters are part of the path. Successful
-calls return `204 No Content`. A non-numeric `min`, `max` or `value` returns
-`400`, and a database failure returns `500`.
+calls return `204 No Content`. Invalid input returns `400`: a `min`, `max` or
+`value` that is not a finite number, `min` greater than `max`, or an
+`ipAddress` that is not an IP address. A database failure returns `500`.
 
 ### Plugs
 
 | Method   | Path                          | Description                           |
 |----------|-------------------------------|---------------------------------------|
 | `GET`    | `/plug/{plugId}/ip/{ipAddress}` | Register a plug, or update its IP address |
-| `DELETE` | `/plug/{plugId}`              | Delete a plug                         |
+| `DELETE` | `/plug/{plugId}`              | Delete a plug and its sensor links    |
 
 ### Sensors
 

@@ -1,14 +1,13 @@
 package db
 
-import (
-	"gorm.io/gorm"
-)
+import "time"
 
 type Sensor struct {
-	gorm.Model
-	SensorId  string
+	ID        uint `gorm:"primaryKey"`
+	UpdatedAt time.Time
+	SensorId  string `gorm:"uniqueIndex:idx_sensor_plug"`
+	PlugId    string `gorm:"uniqueIndex:idx_sensor_plug"`
 	IpAddress string
-	PlugId    string
 	State     string
 	Value     float32
 	Min       float32
@@ -16,8 +15,9 @@ type Sensor struct {
 }
 
 type Plug struct {
-	gorm.Model
-	PlugId    string
+	ID        uint `gorm:"primaryKey"`
+	UpdatedAt time.Time
+	PlugId    string `gorm:"uniqueIndex"`
 	IpAddress string
 	State     string
 	Response  string

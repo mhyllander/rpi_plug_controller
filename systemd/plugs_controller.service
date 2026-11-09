@@ -13,9 +13,6 @@ ExecStart=/home/mhy/bin/plugs_controller
 Nice=0
 TimeoutStopSec=0
 Restart=always
-RuntimeDirectory=paninv
-RuntimeDirectoryMode=2755
-PIDFile=/run/paninv/plugs_controller.pid
 
 UMask=0022
 ReadOnlyPaths=/

@@ -1,13 +1,15 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
+	"math"
 	"net/http"
-	"os"
+	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -19,11 +21,23 @@ import (
 	"github.com/mhyllander/rpi_plug_controller/web"
 )
 
-var rootTemplate *template.Template
+const (
+	listenAddress   = ":3333"
+	requestTimeout  = 30 * time.Second
+	shutdownTimeout = 10 * time.Second
+)
 
-type contextKey string
+// Notifier is told about changes that require plugs to be evaluated.
+type Notifier interface {
+	SensorUpdated(ctx context.Context, sensorId string)
+	PlugChanged(ctx context.Context, plugId string)
+}
 
-const sensorUpdatesKey contextKey = "sensorUpdates"
+type Server struct {
+	store        *db.Store
+	notifier     Notifier
+	rootTemplate *template.Template
+}
 
 type WebSensor struct {
 	SensorId  string
@@ -57,24 +71,65 @@ func NoBreak(s string) template.HTML {
 	return template.HTML(s)
 }
 
-func getRoot(w http.ResponseWriter, r *http.Request) {
-	slog.Debug("GET /")
-	sensors, err := db.GetAllSensors()
+func New(store *db.Store, notifier Notifier) *Server {
+	webFunctions := template.FuncMap{
+		"NoBreak": NoBreak,
+	}
+	return &Server{
+		store:        store,
+		notifier:     notifier,
+		rootTemplate: template.Must(template.New("root.gohtml").Funcs(webFunctions).Parse(web.RootTemplate)),
+	}
+}
+
+// Parses a finite floating point number.
+func parseFiniteFloat32(s string) (float32, error) {
+	value, err := strconv.ParseFloat(s, 32)
+	if err != nil {
+		return 0, err
+	}
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return 0, errors.New("not a finite number")
+	}
+	return float32(value), nil
+}
+
+func (s *Server) getRoot(w http.ResponseWriter, r *http.Request) {
+	sensors, err := s.store.GetAllSensors()
 	if err != nil {
 		slog.Error("failed to get all sensors", "err", err)
+		http.Error(w, "failed to get sensors", http.StatusInternalServerError)
+		return
 	}
-	webSensors := make([]WebSensor, 0, 10)
-	for _, s := range sensors {
-		webSensors = append(webSensors, WebSensor{SensorId: s.SensorId, IpAddress: s.IpAddress, PlugId: s.PlugId, State: s.State, Value: fmt.Sprintf("%0.1f", s.Value), Min: fmt.Sprintf("%0.1f", s.Min), Max: fmt.Sprintf("%0.1f", s.Max), UpdatedAt: s.UpdatedAt.Format(time.DateTime)})
+	webSensors := make([]WebSensor, 0, len(sensors))
+	for _, sensor := range sensors {
+		webSensors = append(webSensors, WebSensor{
+			SensorId:  sensor.SensorId,
+			IpAddress: sensor.IpAddress,
+			PlugId:    sensor.PlugId,
+			State:     sensor.State,
+			Value:     fmt.Sprintf("%0.1f", sensor.Value),
+			Min:       fmt.Sprintf("%0.1f", sensor.Min),
+			Max:       fmt.Sprintf("%0.1f", sensor.Max),
+			UpdatedAt: sensor.UpdatedAt.Format(time.DateTime),
+		})
 	}
 
-	plugs, err := db.GetAllPlugs()
+	plugs, err := s.store.GetAllPlugs()
 	if err != nil {
 		slog.Error("failed to get all plugs", "err", err)
+		http.Error(w, "failed to get plugs", http.StatusInternalServerError)
+		return
 	}
-	webPlugs := make([]WebPlug, 0, 10)
-	for _, p := range plugs {
-		webPlugs = append(webPlugs, WebPlug{PlugId: p.PlugId, IpAddress: p.IpAddress, State: p.State, Response: p.Response, UpdatedAt: p.UpdatedAt.Format(time.DateTime)})
+	webPlugs := make([]WebPlug, 0, len(plugs))
+	for _, plug := range plugs {
+		webPlugs = append(webPlugs, WebPlug{
+			PlugId:    plug.PlugId,
+			IpAddress: plug.IpAddress,
+			State:     plug.State,
+			Response:  plug.Response,
+			UpdatedAt: plug.UpdatedAt.Format(time.DateTime),
+		})
 	}
 
 	data := RootData{
@@ -82,35 +137,43 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 		Sensors:   webSensors,
 		Plugs:     webPlugs,
 	}
-	err = rootTemplate.Execute(w, data)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+
+	// render to a buffer, so that a failure can still be reported as an error
+	var page bytes.Buffer
+	if err := s.rootTemplate.Execute(&page, data); err != nil {
+		slog.Error("failed to render root page", "err", err)
+		http.Error(w, "failed to render page", http.StatusInternalServerError)
+		return
 	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(page.Bytes())
 }
 
-func handleUpdateSensorPlug(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleUpdateSensorPlug(w http.ResponseWriter, r *http.Request) {
 	sensorId := chi.URLParam(r, "sensorId")
 	plugId := chi.URLParam(r, "plugId")
-	min := chi.URLParam(r, "min")
-	max := chi.URLParam(r, "max")
-	slog.Debug("GET /v2/sensor/*/plug/*/min/*/max", "sensorId", sensorId, "plugId", plugId, "min", min, "max", max)
+	minParam := chi.URLParam(r, "min")
+	maxParam := chi.URLParam(r, "max")
+	slog.Info("update sensor plug", "sensorId", sensorId, "plugId", plugId, "min", minParam, "max", maxParam)
 
-	slog.Info("update sensor plug", "sensorId", sensorId, "plugId", plugId, "min", min, "max", max)
-
-	minF, err := strconv.ParseFloat(min, 32)
+	minValue, err := parseFiniteFloat32(minParam)
 	if err != nil {
-		slog.Error("failed to convert to float", "min", min, "err", err)
-		w.WriteHeader(http.StatusBadRequest)
+		slog.Error("failed to convert to float", "min", minParam, "err", err)
+		http.Error(w, "min must be a number", http.StatusBadRequest)
 		return
 	}
-	maxF, err := strconv.ParseFloat(max, 32)
+	maxValue, err := parseFiniteFloat32(maxParam)
 	if err != nil {
-		slog.Error("failed to convert to float", "max", max, "err", err)
-		w.WriteHeader(http.StatusBadRequest)
+		slog.Error("failed to convert to float", "max", maxParam, "err", err)
+		http.Error(w, "max must be a number", http.StatusBadRequest)
+		return
+	}
+	if minValue > maxValue {
+		http.Error(w, "min must not be greater than max", http.StatusBadRequest)
 		return
 	}
 
-	if _, err := db.CreateSensorPlug(sensorId, plugId, float32(minF), float32(maxF)); err != nil {
+	if err := s.store.UpsertSensorPlug(sensorId, plugId, minValue, maxValue); err != nil {
 		slog.Error("failed to update sensor plug", "sensorId", sensorId, "plugId", plugId, "err", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -119,43 +182,36 @@ func handleUpdateSensorPlug(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func handleUpdateSensorValue(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleUpdateSensorValue(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	var sensorUpdates chan<- string = ctx.Value(sensorUpdatesKey).(chan<- string)
-
 	ipAddress := middleware.GetClientIP(ctx)
 	sensorId := chi.URLParam(r, "sensorId")
 	value := chi.URLParam(r, "value")
-	slog.Debug("GET /sensor/*/value", "sensorId", sensorId, "ipAddress", ipAddress, "value", value)
-
 	slog.Info("update sensor value", "sensorId", sensorId, "ipAddress", ipAddress, "value", value)
 
-	valueF, err := strconv.ParseFloat(value, 32)
+	valueF, err := parseFiniteFloat32(value)
 	if err != nil {
 		slog.Error("failed to convert to float", "value", value, "err", err)
-		w.WriteHeader(http.StatusBadRequest)
+		http.Error(w, "value must be a number", http.StatusBadRequest)
 		return
 	}
 
-	if err := db.UpdateSensorValue(sensorId, ipAddress, float32(valueF)); err != nil {
+	if err := s.store.UpdateSensorValue(sensorId, ipAddress, valueF); err != nil {
 		slog.Error("failed to update sensor value", "err", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	// send the sensorId for further processing
-	sensorUpdates <- sensorId
+	s.notifier.SensorUpdated(ctx, sensorId)
 
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func handleDeleteSensor(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleDeleteSensor(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	var sensorUpdates chan<- string = ctx.Value(sensorUpdatesKey).(chan<- string)
-
 	sensorId := chi.URLParam(r, "sensorId")
 	plugId := chi.URLParam(r, "plugId") // optional, "" if not provided
-	slog.Debug("DELETE /sensor", "sensorId", sensorId, "plugId", plugId)
+	slog.Info("delete sensor", "sensorId", sensorId, "plugId", plugId)
 
 	// Collect the plugIds that are affected by deleting the sensor.
 	// If no specific plugId has been provided, we will be updating all
@@ -164,34 +220,42 @@ func handleDeleteSensor(w http.ResponseWriter, r *http.Request) {
 	if plugId != "" {
 		plugIds = append(plugIds, plugId)
 	} else {
-		if plugs, err := db.GetSensorsById(sensorId); err == nil {
-			for _, plug := range plugs {
-				plugIds = append(plugIds, plug.PlugId)
-			}
-		} else {
-			slog.Error("failed to get plugs for sensor", "sensorId", sensorId)
+		sensors, err := s.store.GetSensorsById(sensorId)
+		if err != nil {
+			slog.Error("failed to get plugs for sensor", "sensorId", sensorId, "err", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		for _, sensor := range sensors {
+			plugIds = append(plugIds, sensor.PlugId)
 		}
 	}
 
-	if err := db.DeleteSensor(sensorId, plugId); err != nil {
+	if err := s.store.DeleteSensor(sensorId, plugId); err != nil {
 		slog.Error("failed to delete sensor", "sensorId", sensorId, "plugId", plugId, "err", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	// send the plugIds for further processing
-	for _, pid := range plugIds {
-		sensorUpdates <- pid
+	// the affected plugs must be re-evaluated without the sensor
+	for _, affectedPlugId := range plugIds {
+		s.notifier.PlugChanged(ctx, affectedPlugId)
 	}
 
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func handleUpdatePlug(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleUpdatePlug(w http.ResponseWriter, r *http.Request) {
 	plugId := chi.URLParam(r, "plugId")
 	ipAddress := chi.URLParam(r, "ipAddress")
-	slog.Debug("GET /plug", "plugId", plugId, "ipAddress", ipAddress)
-	if _, err := db.CreatePlug(plugId, ipAddress); err != nil {
+	slog.Info("update plug", "plugId", plugId, "ipAddress", ipAddress)
+
+	if _, err := netip.ParseAddr(ipAddress); err != nil {
+		http.Error(w, "ipAddress must be an IP address", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.store.UpsertPlug(plugId, ipAddress); err != nil {
 		slog.Error("failed to update plug", "plugId", plugId, "err", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -199,10 +263,11 @@ func handleUpdatePlug(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func handleDeletePlug(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleDeletePlug(w http.ResponseWriter, r *http.Request) {
 	plugId := chi.URLParam(r, "plugId")
-	slog.Debug("DELETE /plug", "plugId", plugId)
-	if err := db.DeletePlug(plugId); err != nil {
+	slog.Info("delete plug", "plugId", plugId)
+
+	if err := s.store.DeletePlug(plugId); err != nil {
 		slog.Error("failed to delete plug", "plugId", plugId, "err", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -210,9 +275,7 @@ func handleDeletePlug(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func StartServer(sensorUpdates chan<- string, logLevel string) {
-	var err error
-
+func (s *Server) routes() http.Handler {
 	r := chi.NewRouter()
 
 	// A good base middleware stack
@@ -224,47 +287,56 @@ func StartServer(sensorUpdates chan<- string, logLevel string) {
 	// Set a timeout value on the request context (ctx), that will signal
 	// through ctx.Done() that the request has timed out and further
 	// processing should be stopped.
-	r.Use(middleware.Timeout(60 * time.Second))
+	r.Use(middleware.Timeout(requestTimeout))
 
 	// status page
-	r.Get("/", getRoot)
-	webFunctions := template.FuncMap{
-		"NoBreak": NoBreak,
-	}
-	rootTemplate = template.Must(template.New("root.gohtml").Funcs(webFunctions).Parse(web.RootTemplate))
+	r.Get("/", s.getRoot)
 
 	// Sensor API
-	// Custom middleware to add sensorUpdatesKey
-	sensorUpdatesMiddleware := func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := context.WithValue(r.Context(), sensorUpdatesKey, sensorUpdates)
-			next.ServeHTTP(w, r.WithContext(ctx))
-		})
-	}
 	r.Route("/sensor/{sensorId}", func(r chi.Router) {
-		r.Use(sensorUpdatesMiddleware)
-		r.Get("/plug/{plugId}/min/{min}/max/{max}", handleUpdateSensorPlug)
-		r.Get("/value/{value}", handleUpdateSensorValue)
-		r.Delete("/{plugId}", handleDeleteSensor)
-		r.Delete("/", handleDeleteSensor)
+		r.Get("/plug/{plugId}/min/{min}/max/{max}", s.handleUpdateSensorPlug)
+		r.Get("/value/{value}", s.handleUpdateSensorValue)
+		r.Delete("/{plugId}", s.handleDeleteSensor)
+		r.Delete("/", s.handleDeleteSensor)
 	})
 
 	// Plug API
 	r.Route("/plug/{plugId}", func(r chi.Router) {
-		r.Get("/ip/{ipAddress}", handleUpdatePlug)
-		r.Delete("/", handleDeletePlug)
+		r.Get("/ip/{ipAddress}", s.handleUpdatePlug)
+		r.Delete("/", s.handleDeletePlug)
 	})
 
+	return r
+}
+
+// ListenAndServe serves requests until ctx is cancelled, or the server fails.
+func (s *Server) ListenAndServe(ctx context.Context) error {
 	srv := &http.Server{
-		Addr:     ":3333",
-		Handler:  r,
-		ErrorLog: slog.NewLogLogger(slog.Default().Handler(), slog.LevelError),
+		Addr:              listenAddress,
+		Handler:           s.routes(),
+		ErrorLog:          slog.NewLogLogger(slog.Default().Handler(), slog.LevelError),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      requestTimeout + 5*time.Second,
+		IdleTimeout:       time.Minute,
 	}
-	err = srv.ListenAndServe()
-	if errors.Is(err, http.ErrServerClosed) {
-		slog.Info("server closed")
-	} else if err != nil {
-		slog.Error("error starting server", "err", err)
-		os.Exit(1)
+
+	serverErr := make(chan error, 1)
+	go func() {
+		serverErr <- srv.ListenAndServe()
+	}()
+
+	select {
+	case err := <-serverErr:
+		return fmt.Errorf("server failed: %w", err)
+	case <-ctx.Done():
 	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("server shutdown: %w", err)
+	}
+	slog.Info("server closed")
+	return nil
 }

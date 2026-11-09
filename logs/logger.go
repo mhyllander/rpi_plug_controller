@@ -1,28 +1,18 @@
 package logs
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 )
 
-func SetLoggerOpts(level string) *slog.HandlerOptions {
-	var opts slog.HandlerOptions = slog.HandlerOptions{}
-	switch level {
-	case "debug":
-		opts.Level = slog.LevelDebug
-	case "info":
-		opts.Level = slog.LevelInfo
-	case "warn":
-		opts.Level = slog.LevelWarn
-	case "error":
-		opts.Level = slog.LevelError
-	default:
-		opts.Level = slog.LevelInfo
+func InitLogger(logLevel string) error {
+	var level slog.Level
+	if err := level.UnmarshalText([]byte(logLevel)); err != nil {
+		return fmt.Errorf("invalid log level %q: %w", logLevel, err)
 	}
-	return &opts
-}
 
-func InitLogger(logLevel string) {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, SetLoggerOpts(logLevel)))
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
 	slog.SetDefault(logger)
+	return nil
 }
