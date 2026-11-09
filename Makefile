@@ -15,7 +15,7 @@ bin-plugs_controller:
 	go build -o bin/plugs_controller ./cmd/plugs_controller
 
 arm64-plugs_controller:
-	GOOS=linux GOARCH=arm64 CC=aarch64-linux-gnu-gcc CGO_ENABLED=1 go build -o arm64/plugs_controller ./cmd/plugs_controller
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o arm64/plugs_controller ./cmd/plugs_controller
 
 test:
 	go test ./...
