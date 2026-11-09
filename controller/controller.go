@@ -30,14 +30,16 @@ const (
 type Controller struct {
 	store         *db.Store
 	httpClient    *http.Client
+	plugPort      string
 	sensorUpdates chan string
 	plugUpdates   chan string
 }
 
-func New(store *db.Store) *Controller {
+func New(store *db.Store, plugPort string) *Controller {
 	return &Controller{
 		store:         store,
 		httpClient:    &http.Client{Timeout: plugRequestTimeout},
+		plugPort:      plugPort,
 		sensorUpdates: make(chan string, updateQueueSize),
 		plugUpdates:   make(chan string, updateQueueSize),
 	}
@@ -134,7 +136,7 @@ func (c *Controller) evaluatePlug(plugId string) {
 func (c *Controller) switchPlug(ipAddress, state string) (string, error) {
 	plugUrl := url.URL{
 		Scheme:   "http",
-		Host:     net.JoinHostPort(ipAddress, "80"),
+		Host:     net.JoinHostPort(ipAddress, c.plugPort),
 		Path:     "/relay/0",
 		RawQuery: url.Values{"turn": {state}}.Encode(),
 	}

@@ -19,7 +19,7 @@ A status page showing all sensors and plugs is served at `/`.
 
     make build        # bin/plugs_controller
     make build-rpi    # arm64/plugs_controller
-    bin/plugs_controller [-db plugs.db] [-log-level info]
+    bin/plugs_controller [-db plugs.db] [-log-level info] [-plug-port 80]
 
 The SQLite database defaults to `$PLUGS_DB`, or `plugs.db`. The server listens
 on port 3333.

@@ -15,7 +15,7 @@ import (
 	"github.com/mhyllander/rpi_plug_controller/server"
 )
 
-func run(dbFile string) error {
+func run(dbFile, plugPort string) error {
 	store, err := db.Open(dbFile)
 	if err != nil {
 		return err
@@ -25,7 +25,7 @@ func run(dbFile string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	plugController := controller.New(store)
+	plugController := controller.New(store, plugPort)
 	controllerDone := make(chan struct{})
 	go func() {
 		defer close(controllerDone)
@@ -43,6 +43,7 @@ func run(dbFile string) error {
 func main() {
 	var vDb = flag.String("db", db.GetDBPath(), "SQLite database")
 	var vLogLevel = flag.String("log-level", "info", "log level [debug|info|warn|error]")
+	var vPlugPort = flag.String("plug-port", "80", "port of the plugs' HTTP API")
 	var vHelp = flag.Bool("help", false, "print usage")
 
 	flag.Parse()
@@ -62,7 +63,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := run(*vDb); err != nil {
+	if err := run(*vDb, *vPlugPort); err != nil {
 		slog.Error("plugs controller failed", "err", err)
 		os.Exit(1)
 	}
